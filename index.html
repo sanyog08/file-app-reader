@@ -167,6 +167,34 @@
             display: flex;
             align-items: center;
             margin-bottom: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .section-header:hover {
+            opacity: 0.8;
+        }
+
+        .dropdown-arrow {
+            margin-left: auto;
+            color: white;
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+
+        .dropdown-arrow.rotated {
+            transform: rotate(180deg);
+        }
+
+        .analysis-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            max-height: 1000px;
+        }
+
+        .analysis-content.collapsed {
+            max-height: 0;
+            margin-bottom: 0;
         }
 
         .section-icon {
@@ -355,7 +383,8 @@
                 <div class="upload-content" id="uploadArea">
                     <div class="upload-icon"></div>
                     <div class="upload-text">Drop a text file here or click to browse</div>
-                    <input type="file" id="fileInput" class="file-input" accept=".txt,.md,.csv">
+                    <div class="upload-text">(Supports .txt, .md, .csv, .pdf files)</div>
+                    <input type="file" id="fileInput" class="file-input" accept=".txt,.md,.csv,.pdf">
                 </div>
             </div>
             
@@ -364,7 +393,7 @@
                 <textarea 
                     id="textArea" 
                     class="paste-area" 
-                    placeholder="Paste your text content here or drag and drop a text file above..."
+                    placeholder="Paste your text content here or drag and drop a file above... (Supports .txt, .md, .csv, .pdf files)"
                 ></textarea>
                 <button id="analyzeBtn" class="analyze-btn">Analyze Text</button>
             </div>
@@ -374,28 +403,31 @@
 
         <!-- Analysis Section -->
         <div id="analysisSection" class="card hidden">
-            <div class="section-header">
+            <div class="section-header" id="analysisHeader">
                 <div class="section-icon chart-icon"></div>
                 <h2 class="section-title">Word Analysis</h2>
+                <div class="dropdown-arrow">▼</div>
             </div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <p class="stat-label">Total Words</p>
-                    <p class="stat-value" id="totalWords">0</p>
+            <div class="analysis-content" id="analysisContent">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <p class="stat-label">Total Words</p>
+                        <p class="stat-value" id="totalWords">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <p class="stat-label">Unique Words</p>
+                        <p class="stat-value" id="uniqueWords">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <p class="stat-label">Avg Word Length</p>
+                        <p class="stat-value" id="avgLength">0</p>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <p class="stat-label">Unique Words</p>
-                    <p class="stat-value" id="uniqueWords">0</p>
+                
+                <div class="top-words">
+                    <h3 class="top-words-title">Top 10 Words</h3>
+                    <div class="word-tags" id="topWords"></div>
                 </div>
-                <div class="stat-card">
-                    <p class="stat-label">Avg Word Length</p>
-                    <p class="stat-value" id="avgLength">0</p>
-                </div>
-            </div>
-            
-            <div class="top-words">
-                <h3 class="top-words-title">Top 10 Words</h3>
-                <div class="word-tags" id="topWords"></div>
             </div>
         </div>
 
@@ -437,9 +469,11 @@
                 this.isReading = false;
                 this.isPaused = false;
                 this.utterance = null;
+                this.analysisExpanded = true;
                 
                 this.initializeElements();
                 this.bindEvents();
+                this.loadPDFLibrary();
             }
 
             initializeElements() {
@@ -449,6 +483,8 @@
                 this.analyzeBtn = document.getElementById('analyzeBtn');
                 this.errorMessage = document.getElementById('errorMessage');
                 this.analysisSection = document.getElementById('analysisSection');
+                this.analysisHeader = document.getElementById('analysisHeader');
+                this.analysisContent = document.getElementById('analysisContent');
                 this.readerSection = document.getElementById('readerSection');
                 this.startBtn = document.getElementById('startBtn');
                 this.pauseBtn = document.getElementById('pauseBtn');
@@ -487,6 +523,34 @@
                 this.startBtn.addEventListener('click', () => this.startReading());
                 this.pauseBtn.addEventListener('click', () => this.pauseReading());
                 this.stopBtn.addEventListener('click', () => this.stopReading());
+
+                // Analysis dropdown toggle
+                this.analysisHeader.addEventListener('click', () => this.toggleAnalysis());
+            }
+
+            loadPDFLibrary() {
+                // Load PDF.js library
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+                script.onload = () => {
+                    if (window.pdfjsLib) {
+                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    }
+                };
+                document.head.appendChild(script);
+            }
+
+            toggleAnalysis() {
+                this.analysisExpanded = !this.analysisExpanded;
+                const arrow = this.analysisHeader.querySelector('.dropdown-arrow');
+                
+                if (this.analysisExpanded) {
+                    this.analysisContent.classList.remove('collapsed');
+                    arrow.classList.remove('rotated');
+                } else {
+                    this.analysisContent.classList.add('collapsed');
+                    arrow.classList.add('rotated');
+                }
             }
 
             handleDragOver(e) {
@@ -518,11 +582,11 @@
 
             processFile(file) {
                 // Check file type
-                const allowedTypes = ['.txt', '.md', '.csv'];
+                const allowedTypes = ['.txt', '.md', '.csv', '.pdf'];
                 const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
                 
                 if (!allowedTypes.includes(fileExtension)) {
-                    this.showError('Please select a .txt, .md, or .csv file.');
+                    this.showError('Please select a .txt, .md, .csv, or .pdf file.');
                     return;
                 }
 
@@ -532,16 +596,52 @@
                     return;
                 }
 
-                // Read file content
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    this.textArea.value = e.target.result;
-                    this.hideError();
-                };
-                reader.onerror = () => {
-                    this.showError('Error reading file. Please try again.');
-                };
-                reader.readAsText(file);
+                // Handle PDF files differently
+                if (fileExtension === '.pdf') {
+                    this.processPDFFile(file);
+                } else {
+                    // Handle text files
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.textArea.value = e.target.result;
+                        this.hideError();
+                    };
+                    reader.onerror = () => {
+                        this.showError('Error reading file. Please try again.');
+                    };
+                    reader.readAsText(file);
+                }
+            }
+
+            async processPDFFile(file) {
+                try {
+                    if (!window.pdfjsLib) {
+                        this.showError('PDF support is loading. Please wait a moment and try again.');
+                        return;
+                    }
+
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
+                    let fullText = '';
+
+                    // Extract text from all pages
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+
+                    if (fullText.trim()) {
+                        this.textArea.value = fullText;
+                        this.hideError();
+                    } else {
+                        this.showError('No text could be extracted from this PDF. It might be an image-based PDF.');
+                    }
+                } catch (error) {
+                    console.error('PDF processing error:', error);
+                    this.showError('Error reading PDF file. Please make sure it\'s a valid PDF with selectable text.');
+                }
             }
 
             analyzeText() {
