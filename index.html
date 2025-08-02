@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Reader & Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            min-height: 100vh;
+            background: linear-gradient(to bottom right, #6a11cb 0%, #2575fc 100%);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .title {
+            font-size: 3rem;
+            font-weight: bold;
+            color: white;
+            text-align: center;
+            margin-bottom: 2rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .upload-section {
+            text-align: center;
+        }
+
+        .upload-area {
+            display: flex;
+            justify-content: center;
+        }
+
+        .upload-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            padding: 3rem;
+            border: 3px dashed rgba(255, 255, 255, 0.4);
+            border-radius: 1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-text {
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+        }
+
+        .upload-content:hover {
+            border-color: rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
+        }
+
+        .upload-content.dragover {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .upload-icon {
+            width: 4rem;
+            height: 4rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 1rem;
+        }
+
+        .text-input-section {
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .text-input-section .upload-text {
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .paste-area {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1rem;
+            resize: vertical;
+            outline: none;
+        }
+
+        .paste-area::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .paste-area:focus {
+            border-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .analyze-btn {
+            background: linear-gradient(to right, #10b981, #059669);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .analyze-btn:hover {
+            transform: scale(1.05);
+            background: linear-gradient(to right, #059669, #047857);
+        }
+
+        .analyze-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            color: #fecaca;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-icon {
+            width: 1.5rem;
+            height: 1.5rem;
+            color: white;
+            margin-right: 0.75rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            transition: background 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .top-words {
+            margin-top: 1.5rem;
+        }
+
+        .top-words-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 0.75rem;
+        }
+
+        .word-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .word-tag {
+            padding: 0.5rem 1rem;
+            background: linear-gradient(to right, rgba(147, 51, 234, 0.3), rgba(59, 130, 246, 0.3));
+            border-radius: 9999px;
+            color: white;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+
+        .word-tag:hover {
+            background: linear-gradient(to right, rgba(147, 51, 234, 0.5), rgba(59, 130, 246, 0.5));
+            transform: scale(1.05);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-start {
+            background: linear-gradient(to right, #10b981, #059669);
+            color: white;
+        }
+
+        .btn-pause {
+            background: linear-gradient(to right, #f59e0b, #ea580c);
+            color: white;
+        }
+
+        .btn-stop {
+            background: linear-gradient(to right, #ef4444, #e11d48);
+            color: white;
+        }
+
+        .preview {
+            margin-top: 2rem;
+        }
+
+        .preview-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 0.75rem;
+        }
+
+        .preview-content {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            max-height: 16rem;
+            overflow-y: auto;
+        }
+
+        .preview-text {
+            color: rgba(255, 255, 255, 0.8);
+            white-space: pre-wrap;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Icons */
+        .upload-icon::before {
+            content: "📁";
+            font-size: 4rem;
+        }
+
+        .chart-icon::before {
+            content: "📊";
+        }
+
+        .speaker-icon::before {
+            content: "🔊";
+        }
+
+        .play-icon::before {
+            content: "▶️";
+        }
+
+        .pause-icon::before {
+            content: "⏸️";
+        }
+
+        .stop-icon::before {
+            content: "⏹️";
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">File Reader & Analyzer</h1>
+
+        <!-- Upload Section -->
+        <div class="card upload-section">
+            <div class="upload-area">
+                <div class="upload-content" id="uploadArea">
+                    <div class="upload-icon"></div>
+                    <div class="upload-text">Drop a text file here or click to browse</div>
+                    <input type="file" id="fileInput" class="file-input" accept=".txt,.md,.csv">
+                </div>
+            </div>
+            
+            <div class="text-input-section">
+                <div class="upload-text">Or paste your text below:</div>
+                <textarea 
+                    id="textArea" 
+                    class="paste-area" 
+                    placeholder="Paste your text content here or drag and drop a text file above..."
+                ></textarea>
+                <button id="analyzeBtn" class="analyze-btn">Analyze Text</button>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+
+        <!-- Analysis Section -->
+        <div id="analysisSection" class="card hidden">
+            <div class="section-header">
+                <div class="section-icon chart-icon"></div>
+                <h2 class="section-title">Word Analysis</h2>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <p class="stat-label">Total Words</p>
+                    <p class="stat-value" id="totalWords">0</p>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-label">Unique Words</p>
+                    <p class="stat-value" id="uniqueWords">0</p>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-label">Avg Word Length</p>
+                    <p class="stat-value" id="avgLength">0</p>
+                </div>
+            </div>
+            
+            <div class="top-words">
+                <h3 class="top-words-title">Top 10 Words</h3>
+                <div class="word-tags" id="topWords"></div>
+            </div>
+        </div>
+
+        <!-- Reader Controls -->
+        <div id="readerSection" class="card hidden">
+            <div class="section-header">
+                <div class="section-icon speaker-icon"></div>
+                <h2 class="section-title">Text-to-Speech Controls</h2>
+            </div>
+            <div class="controls">
+                <button id="startBtn" class="btn btn-start">
+                    <span class="play-icon"></span>
+                    <span>Start Reading</span>
+                </button>
+                <button id="pauseBtn" class="btn btn-pause hidden">
+                    <span class="pause-icon"></span>
+                    <span>Pause</span>
+                </button>
+                <button id="stopBtn" class="btn btn-stop hidden">
+                    <span class="stop-icon"></span>
+                    <span>Stop</span>
+                </button>
+            </div>
+            
+            <!-- File Preview -->
+            <div class="preview">
+                <h3 class="preview-title">Text Preview</h3>
+                <div class="preview-content">
+                    <p class="preview-text" id="previewText"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class FileReaderApp {
+            constructor() {
+                this.currentText = '';
+                this.isReading = false;
+                this.isPaused = false;
+                this.utterance = null;
+                
+                this.initializeElements();
+                this.bindEvents();
+            }
+
+            initializeElements() {
+                this.uploadArea = document.getElementById('uploadArea');
+                this.fileInput = document.getElementById('fileInput');
+                this.textArea = document.getElementById('textArea');
+                this.analyzeBtn = document.getElementById('analyzeBtn');
+                this.errorMessage = document.getElementById('errorMessage');
+                this.analysisSection = document.getElementById('analysisSection');
+                this.readerSection = document.getElementById('readerSection');
+                this.startBtn = document.getElementById('startBtn');
+                this.pauseBtn = document.getElementById('pauseBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.previewText = document.getElementById('previewText');
+            }
+
+            bindEvents() {
+                // File upload events
+                this.uploadArea.addEventListener('click', () => this.fileInput.click());
+                this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                
+                // Drag and drop events (only on upload area)
+                this.uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
+                this.uploadArea.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+                this.uploadArea.addEventListener('drop', (e) => this.handleDrop(e));
+                
+                // Also allow drag and drop on the entire upload section
+                const uploadSection = document.querySelector('.upload-section');
+                uploadSection.addEventListener('dragover', (e) => this.handleDragOver(e));
+                uploadSection.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+                uploadSection.addEventListener('drop', (e) => this.handleDrop(e));
+                
+                // Analysis button
+                this.analyzeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.analyzeText();
+                });
+                
+                // Prevent textarea from triggering file dialog
+                this.textArea.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                
+                // Text-to-speech controls
+                this.startBtn.addEventListener('click', () => this.startReading());
+                this.pauseBtn.addEventListener('click', () => this.pauseReading());
+                this.stopBtn.addEventListener('click', () => this.stopReading());
+            }
+
+            handleDragOver(e) {
+                e.preventDefault();
+                this.uploadArea.classList.add('dragover');
+            }
+
+            handleDragLeave(e) {
+                e.preventDefault();
+                this.uploadArea.classList.remove('dragover');
+            }
+
+            handleDrop(e) {
+                e.preventDefault();
+                this.uploadArea.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    this.processFile(files[0]);
+                }
+            }
+
+            handleFileSelect(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    this.processFile(file);
+                }
+            }
+
+            processFile(file) {
+                // Check file type
+                const allowedTypes = ['.txt', '.md', '.csv'];
+                const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+                
+                if (!allowedTypes.includes(fileExtension)) {
+                    this.showError('Please select a .txt, .md, or .csv file.');
+                    return;
+                }
+
+                // Check file size (10MB limit)
+                if (file.size > 10 * 1024 * 1024) {
+                    this.showError('File is too large. Please select a file smaller than 10MB.');
+                    return;
+                }
+
+                // Read file content
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.textArea.value = e.target.result;
+                    this.hideError();
+                };
+                reader.onerror = () => {
+                    this.showError('Error reading file. Please try again.');
+                };
+                reader.readAsText(file);
+            }
+
+            analyzeText() {
+                const text = this.textArea.value.trim();
+                
+                if (!text) {
+                    this.showError('Please enter some text or upload a file to analyze.');
+                    return;
+                }
+
+                this.currentText = text;
+                this.hideError();
+                
+                const analysis = this.performTextAnalysis(text);
+                this.displayAnalysis(analysis);
+                this.showReaderControls();
+            }
+
+            performTextAnalysis(text) {
+                // Extract words using regex
+                const words = text.toLowerCase().match(/\b[a-zA-Z]+\b/g) || [];
+                
+                if (words.length === 0) {
+                    return {
+                        wordCount: 0,
+                        uniqueWords: 0,
+                        avgWordLength: 0,
+                        topWords: []
+                    };
+                }
+
+                // Calculate basic statistics
+                const wordCount = words.length;
+                const uniqueWords = new Set(words).size;
+                const avgWordLength = words.reduce((sum, word) => sum + word.length, 0) / words.length;
+
+                // Count word frequencies
+                const wordFreq = {};
+                words.forEach(word => {
+                    wordFreq[word] = (wordFreq[word] || 0) + 1;
+                });
+
+                // Filter out common stop words
+                const stopWords = new Set([
+                    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+                    'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+                    'before', 'after', 'above', 'below', 'between', 'under', 'again',
+                    'further', 'then', 'once', 'is', 'am', 'are', 'was', 'were', 'be',
+                    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                    'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these',
+                    'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'them', 'their',
+                    'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each',
+                    'every', 'some', 'any', 'few', 'more', 'most', 'other', 'such', 'as'
+                ]);
+
+                // Get top words excluding stop words
+                const filteredWords = Object.entries(wordFreq)
+                    .filter(([word, count]) => !stopWords.has(word) && word.length > 2)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10);
+
+                return {
+                    wordCount,
+                    uniqueWords,
+                    avgWordLength: Math.round(avgWordLength * 100) / 100,
+                    topWords: filteredWords
+                };
+            }
+
+            displayAnalysis(analysis) {
+                document.getElementById('totalWords').textContent = analysis.wordCount;
+                document.getElementById('uniqueWords').textContent = analysis.uniqueWords;
+                document.getElementById('avgLength').textContent = analysis.avgWordLength;
+
+                const topWordsContainer = document.getElementById('topWords');
+                topWordsContainer.innerHTML = '';
+                
+                analysis.topWords.forEach(([word, count]) => {
+                    const tag = document.createElement('span');
+                    tag.className = 'word-tag';
+                    tag.textContent = `${word} (${count})`;
+                    topWordsContainer.appendChild(tag);
+                });
+
+                this.analysisSection.classList.remove('hidden');
+            }
+
+            showReaderControls() {
+                this.previewText.textContent = this.currentText.substring(0, 500) + 
+                    (this.currentText.length > 500 ? '...' : '');
+                this.readerSection.classList.remove('hidden');
+            }
+
+            startReading() {
+                if (!this.currentText) return;
+
+                this.isReading = true;
+                this.isPaused = false;
+
+                this.utterance = new SpeechSynthesisUtterance(this.currentText);
+                
+                this.utterance.onend = () => {
+                    this.isReading = false;
+                    this.isPaused = false;
+                    this.updateButtons();
+                };
+
+                this.utterance.onerror = (e) => {
+                    this.showError('Speech synthesis error: ' + e.error);
+                    this.isReading = false;
+                    this.isPaused = false;
+                    this.updateButtons();
+                };
+
+                speechSynthesis.speak(this.utterance);
+                this.updateButtons();
+            }
+
+            pauseReading() {
+                if (speechSynthesis.speaking) {
+                    if (this.isPaused) {
+                        speechSynthesis.resume();
+                        this.isPaused = false;
+                    } else {
+                        speechSynthesis.pause();
+                        this.isPaused = true;
+                    }
+                    this.updateButtons();
+                }
+            }
+
+            stopReading() {
+                speechSynthesis.cancel();
+                this.isReading = false;
+                this.isPaused = false;
+                this.updateButtons();
+            }
+
+            updateButtons() {
+                if (!this.isReading) {
+                    this.startBtn.classList.remove('hidden');
+                    this.pauseBtn.classList.add('hidden');
+                    this.stopBtn.classList.add('hidden');
+                } else {
+                    this.startBtn.classList.add('hidden');
+                    this.pauseBtn.classList.remove('hidden');
+                    this.stopBtn.classList.remove('hidden');
+                    
+                    this.pauseBtn.innerHTML = this.isPaused ? 
+                        '<span class="play-icon"></span><span>Resume</span>' :
+                        '<span class="pause-icon"></span><span>Pause</span>';
+                }
+            }
+
+            showError(message) {
+                this.errorMessage.textContent = message;
+                this.errorMessage.classList.remove('hidden');
+            }
+
+            hideError() {
+                this.errorMessage.classList.add('hidden');
+            }
+        }
+
+        // Initialize the app when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new FileReaderApp();
+        });
+    </script>
+</body>
+</html>
