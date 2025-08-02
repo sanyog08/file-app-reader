@@ -131,16 +131,28 @@
             border-color: rgba(255, 255, 255, 0.8);
         }
 
-        .analyze-btn {
-            background: linear-gradient(to right, #10b981, #059669);
-            color: white;
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .analyze-btn, .read-btn {
             border: none;
             padding: 1rem 2rem;
             border-radius: 0.75rem;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 1rem;
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .analyze-btn {
+            background: linear-gradient(to right, #10b981, #059669);
+            color: white;
         }
 
         .analyze-btn:hover {
@@ -148,7 +160,17 @@
             background: linear-gradient(to right, #059669, #047857);
         }
 
-        .analyze-btn:disabled {
+        .read-btn {
+            background: linear-gradient(to right, #f59e0b, #ea580c);
+            color: white;
+        }
+
+        .read-btn:hover {
+            transform: scale(1.05);
+            background: linear-gradient(to right, #ea580c, #dc2626);
+        }
+
+        .analyze-btn:disabled, .read-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
@@ -395,13 +417,52 @@
                     class="paste-area" 
                     placeholder="Paste your text content here or drag and drop a file above... (Supports .txt, .md, .csv, .pdf files)"
                 ></textarea>
-                <button id="analyzeBtn" class="analyze-btn">Analyze Text</button>
+                <div class="button-group">
+                    <button id="analyzeBtn" class="analyze-btn">
+                        <span class="chart-icon"></span>
+                        Analyze Text
+                    </button>
+                    <button id="readBtn" class="read-btn hidden">
+                        <span class="play-icon"></span>
+                        Start Reading
+                    </button>
+                </div>
             </div>
         </div>
 
         <div id="errorMessage" class="error-message hidden"></div>
 
-        <!-- Analysis Section -->
+        <!-- Reader Controls -->
+        <div id="readerSection" class="card hidden">
+            <div class="section-header">
+                <div class="section-icon speaker-icon"></div>
+                <h2 class="section-title">Text-to-Speech Controls</h2>
+            </div>
+            <div class="controls">
+                <button id="startBtn" class="btn btn-start hidden">
+                    <span class="play-icon"></span>
+                    <span>Start Reading</span>
+                </button>
+                <button id="pauseBtn" class="btn btn-pause hidden">
+                    <span class="pause-icon"></span>
+                    <span>Pause</span>
+                </button>
+                <button id="stopBtn" class="btn btn-stop hidden">
+                    <span class="stop-icon"></span>
+                    <span>Stop</span>
+                </button>
+            </div>
+            
+            <!-- File Preview -->
+            <div class="preview">
+                <h3 class="preview-title">Text Preview</h3>
+                <div class="preview-content">
+                    <p class="preview-text" id="previewText"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Section (moved to bottom) -->
         <div id="analysisSection" class="card hidden">
             <div class="section-header" id="analysisHeader">
                 <div class="section-icon chart-icon"></div>
@@ -430,36 +491,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Reader Controls -->
-        <div id="readerSection" class="card hidden">
-            <div class="section-header">
-                <div class="section-icon speaker-icon"></div>
-                <h2 class="section-title">Text-to-Speech Controls</h2>
-            </div>
-            <div class="controls">
-                <button id="startBtn" class="btn btn-start">
-                    <span class="play-icon"></span>
-                    <span>Start Reading</span>
-                </button>
-                <button id="pauseBtn" class="btn btn-pause hidden">
-                    <span class="pause-icon"></span>
-                    <span>Pause</span>
-                </button>
-                <button id="stopBtn" class="btn btn-stop hidden">
-                    <span class="stop-icon"></span>
-                    <span>Stop</span>
-                </button>
-            </div>
-            
-            <!-- File Preview -->
-            <div class="preview">
-                <h3 class="preview-title">Text Preview</h3>
-                <div class="preview-content">
-                    <p class="preview-text" id="previewText"></p>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -481,6 +512,7 @@
                 this.fileInput = document.getElementById('fileInput');
                 this.textArea = document.getElementById('textArea');
                 this.analyzeBtn = document.getElementById('analyzeBtn');
+                this.readBtn = document.getElementById('readBtn');
                 this.errorMessage = document.getElementById('errorMessage');
                 this.analysisSection = document.getElementById('analysisSection');
                 this.analysisHeader = document.getElementById('analysisHeader');
@@ -512,6 +544,12 @@
                 this.analyzeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.analyzeText();
+                });
+
+                // Read button (new)
+                this.readBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.startReading();
                 });
                 
                 // Prevent textarea from triggering file dialog
@@ -658,6 +696,7 @@
                 const analysis = this.performTextAnalysis(text);
                 this.displayAnalysis(analysis);
                 this.showReaderControls();
+                this.showReadButton();
             }
 
             performTextAnalysis(text) {
@@ -729,6 +768,10 @@
                 this.analysisSection.classList.remove('hidden');
             }
 
+            showReadButton() {
+                this.readBtn.classList.remove('hidden');
+            }
+
             showReaderControls() {
                 this.previewText.textContent = this.currentText.substring(0, 500) + 
                     (this.currentText.length > 500 ? '...' : '');
@@ -736,7 +779,16 @@
             }
 
             startReading() {
-                if (!this.currentText) return;
+                if (!this.currentText) {
+                    // If no text is analyzed yet, try to analyze first
+                    const text = this.textArea.value.trim();
+                    if (!text) {
+                        this.showError('Please enter some text or upload a file first.');
+                        return;
+                    }
+                    this.currentText = text;
+                    this.showReaderControls();
+                }
 
                 this.isReading = true;
                 this.isPaused = false;
@@ -782,9 +834,12 @@
 
             updateButtons() {
                 if (!this.isReading) {
-                    this.startBtn.classList.remove('hidden');
+                    this.startBtn.classList.add('hidden');
                     this.pauseBtn.classList.add('hidden');
                     this.stopBtn.classList.add('hidden');
+                    
+                    // Update the main read button
+                    this.readBtn.innerHTML = '<span class="play-icon"></span>Start Reading';
                 } else {
                     this.startBtn.classList.add('hidden');
                     this.pauseBtn.classList.remove('hidden');
@@ -793,6 +848,9 @@
                     this.pauseBtn.innerHTML = this.isPaused ? 
                         '<span class="play-icon"></span><span>Resume</span>' :
                         '<span class="pause-icon"></span><span>Pause</span>';
+                        
+                    // Update the main read button to show it's playing
+                    this.readBtn.innerHTML = '<span class="pause-icon"></span>Reading...';
                 }
             }
 
