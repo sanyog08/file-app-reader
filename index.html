@@ -338,6 +338,11 @@
             color: white;
         }
 
+        .btn-save {
+            background: linear-gradient(to right, #8b5cf6, #7c3aed);
+            color: white;
+        }
+
         .preview {
             margin-top: 2rem;
         }
@@ -392,6 +397,10 @@
 
         .stop-icon::before {
             content: "⏹️";
+        }
+
+        .download-icon::before {
+            content: "💾";
         }
     </style>
 </head>
@@ -451,6 +460,10 @@
                     <span class="stop-icon"></span>
                     <span>Stop</span>
                 </button>
+                <button id="saveBtn" class="btn btn-save hidden">
+                    <span class="download-icon"></span>
+                    <span>Save Audio</span>
+                </button>
             </div>
             
             <!-- File Preview -->
@@ -462,8 +475,8 @@
             </div>
         </div>
 
-        <!-- Analysis Section (moved to bottom) -->
-        <div id="analysisSection" class="card hidden">
+        <!-- Analysis Section (hidden) -->
+        <div id="analysisSection" class="card hidden" style="display: none;">
             <div class="section-header" id="analysisHeader">
                 <div class="section-icon chart-icon"></div>
                 <h2 class="section-title">Word Analysis</h2>
@@ -501,10 +514,15 @@
                 this.isPaused = false;
                 this.utterance = null;
                 this.analysisExpanded = true;
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.audioContext = null;
+                this.destination = null;
                 
                 this.initializeElements();
                 this.bindEvents();
                 this.loadPDFLibrary();
+                this.setupAudioRecording();
             }
 
             initializeElements() {
@@ -521,6 +539,7 @@
                 this.startBtn = document.getElementById('startBtn');
                 this.pauseBtn = document.getElementById('pauseBtn');
                 this.stopBtn = document.getElementById('stopBtn');
+                this.saveBtn = document.getElementById('saveBtn');
                 this.previewText = document.getElementById('previewText');
             }
 
@@ -561,6 +580,7 @@
                 this.startBtn.addEventListener('click', () => this.startReading());
                 this.pauseBtn.addEventListener('click', () => this.pauseReading());
                 this.stopBtn.addEventListener('click', () => this.stopReading());
+                this.saveBtn.addEventListener('click', () => this.saveAudio());
 
                 // Analysis dropdown toggle
                 this.analysisHeader.addEventListener('click', () => this.toggleAnalysis());
@@ -576,6 +596,16 @@
                     }
                 };
                 document.head.appendChild(script);
+            }
+
+            async setupAudioRecording() {
+                try {
+                    // Create audio context for recording
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.destination = this.audioContext.createMediaStreamDestination();
+                } catch (error) {
+                    console.warn('Audio recording setup failed:', error);
+                }
             }
 
             toggleAnalysis() {
@@ -765,7 +795,8 @@
                     topWordsContainer.appendChild(tag);
                 });
 
-                this.analysisSection.classList.remove('hidden');
+                // Don't show the analysis section since it's hidden
+                // this.analysisSection.classList.remove('hidden');
             }
 
             showReadButton() {
@@ -778,7 +809,7 @@
                 this.readerSection.classList.remove('hidden');
             }
 
-            startReading() {
+            async startReading() {
                 if (!this.currentText) {
                     // If no text is analyzed yet, try to analyze first
                     const text = this.textArea.value.trim();
@@ -793,11 +824,30 @@
                 this.isReading = true;
                 this.isPaused = false;
 
+                // Start audio recording if available
+                if (this.audioContext && this.destination) {
+                    try {
+                        this.audioChunks = [];
+                        this.mediaRecorder = new MediaRecorder(this.destination.stream);
+                        
+                        this.mediaRecorder.ondataavailable = (event) => {
+                            if (event.data.size > 0) {
+                                this.audioChunks.push(event.data);
+                            }
+                        };
+
+                        this.mediaRecorder.start();
+                    } catch (error) {
+                        console.warn('Audio recording failed:', error);
+                    }
+                }
+
                 this.utterance = new SpeechSynthesisUtterance(this.currentText);
                 
                 this.utterance.onend = () => {
                     this.isReading = false;
                     this.isPaused = false;
+                    this.stopRecording();
                     this.updateButtons();
                 };
 
@@ -805,6 +855,7 @@
                     this.showError('Speech synthesis error: ' + e.error);
                     this.isReading = false;
                     this.isPaused = false;
+                    this.stopRecording();
                     this.updateButtons();
                 };
 
@@ -829,7 +880,37 @@
                 speechSynthesis.cancel();
                 this.isReading = false;
                 this.isPaused = false;
+                this.stopRecording();
                 this.updateButtons();
+            }
+
+            stopRecording() {
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                }
+            }
+
+            async saveAudio() {
+                if (this.audioChunks.length === 0) {
+                    this.showError('No audio to save. Please read some text first.');
+                    return;
+                }
+
+                try {
+                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                    const url = URL.createObjectURL(audioBlob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `text-to-speech-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.wav`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    this.showError('Failed to save audio: ' + error.message);
+                }
             }
 
             updateButtons() {
@@ -838,12 +919,18 @@
                     this.pauseBtn.classList.add('hidden');
                     this.stopBtn.classList.add('hidden');
                     
+                    // Show save button if we have audio
+                    if (this.audioChunks.length > 0) {
+                        this.saveBtn.classList.remove('hidden');
+                    }
+                    
                     // Update the main read button
                     this.readBtn.innerHTML = '<span class="play-icon"></span>Start Reading';
                 } else {
                     this.startBtn.classList.add('hidden');
                     this.pauseBtn.classList.remove('hidden');
                     this.stopBtn.classList.remove('hidden');
+                    this.saveBtn.classList.add('hidden');
                     
                     this.pauseBtn.innerHTML = this.isPaused ? 
                         '<span class="play-icon"></span><span>Resume</span>' :
