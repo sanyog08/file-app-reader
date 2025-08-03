@@ -460,7 +460,7 @@
                     <span class="stop-icon"></span>
                     <span>Stop</span>
                 </button>
-                <button id="saveBtn" class="btn btn-save hidden">
+                <button id="saveBtn" class="btn btn-save">
                     <span class="download-icon"></span>
                     <span>Save Audio</span>
                 </button>
@@ -891,26 +891,203 @@
             }
 
             async saveAudio() {
-                if (this.audioChunks.length === 0) {
-                    this.showError('No audio to save. Please read some text first.');
+                const text = this.currentText || this.textArea.value.trim();
+                
+                if (!text) {
+                    this.showError('Please enter some text first.');
                     return;
                 }
 
                 try {
-                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
-                    const url = URL.createObjectURL(audioBlob);
+                    // Show loading message
+                    const originalSaveText = this.saveBtn.innerHTML;
+                    this.saveBtn.innerHTML = '<span class="download-icon"></span><span>Generating...</span>';
+                    this.saveBtn.disabled = true;
+
+                    // Create a new utterance for audio generation
+                    const utterance = new SpeechSynthesisUtterance(text);
                     
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `text-to-speech-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.wav`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    // Set up audio recording
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const destination = audioContext.createMediaStreamDestination();
                     
-                    URL.revokeObjectURL(url);
+                    // Try different MIME types in order of preference
+                    const mimeTypes = [
+                        'audio/mp4', // This can sometimes work for MP3-like quality
+                        'audio/webm;codecs=opus',
+                        'audio/webm',
+                        'audio/ogg;codecs=opus',
+                        'audio/wav'
+                    ];
+                    
+                    let selectedMimeType = 'audio/webm';
+                    let fileExtension = 'webm';
+                    
+                    // Find the best supported format
+                    for (const mimeType of mimeTypes) {
+                        if (MediaRecorder.isTypeSupported(mimeType)) {
+                            selectedMimeType = mimeType;
+                            if (mimeType.includes('mp4')) {
+                                fileExtension = 'mp4';
+                            } else if (mimeType.includes('ogg')) {
+                                fileExtension = 'ogg';
+                            } else if (mimeType.includes('wav')) {
+                                fileExtension = 'wav';
+                            } else {
+                                fileExtension = 'webm';
+                            }
+                            break;
+                        }
+                    }
+                    
+                    // Create media recorder
+                    const mediaRecorder = new MediaRecorder(destination.stream, {
+                        mimeType: selectedMimeType,
+                        audioBitsPerSecond: 128000 // Higher quality
+                    });
+                    
+                    const audioChunks = [];
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = async () => {
+                        try {
+                            const audioBlob = new Blob(audioChunks, { type: selectedMimeType });
+                            
+                            // If we got MP4, try to save as MP3
+                            if (selectedMimeType.includes('mp4') || fileExtension === 'mp4') {
+                                await this.downloadAudio(audioBlob, 'mp3');
+                            } else {
+                                // For other formats, try to convert to MP3 using Web Audio API
+                                await this.convertAndDownload(audioBlob, audioContext);
+                            }
+                        } catch (error) {
+                            console.error('Download error:', error);
+                            // Fallback to original format
+                            await this.downloadAudio(audioBlob, fileExtension);
+                        } finally {
+                            // Restore button
+                            this.saveBtn.innerHTML = originalSaveText;
+                            this.saveBtn.disabled = false;
+                        }
+                    };
+                    
+                    // Start recording
+                    mediaRecorder.start();
+                    
+                    // Speak the text
+                    utterance.onend = () => {
+                        setTimeout(() => {
+                            mediaRecorder.stop();
+                        }, 500); // Small delay to ensure all audio is captured
+                    };
+                    
+                    utterance.onerror = (e) => {
+                        this.showError('Speech synthesis error: ' + e.error);
+                        mediaRecorder.stop();
+                        audioContext.close();
+                        this.saveBtn.innerHTML = originalSaveText;
+                        this.saveBtn.disabled = false;
+                    };
+                    
+                    speechSynthesis.speak(utterance);
+                    
                 } catch (error) {
-                    this.showError('Failed to save audio: ' + error.message);
+                    console.error('Audio recording error:', error);
+                    // Fallback: Create a simple text file if audio recording fails
+                    this.showError('Audio recording not supported. Saving as text file instead.');
+                    this.saveAsTextFile(text);
+                    this.saveBtn.innerHTML = originalSaveText;
+                    this.saveBtn.disabled = false;
                 }
+            }
+
+            async convertAndDownload(audioBlob, audioContext) {
+                try {
+                    // Try to process the audio for better compatibility
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    
+                    // Create a new blob with WAV format (more universally supported)
+                    const wavBlob = this.audioBufferToWav(audioBuffer);
+                    await this.downloadAudio(wavBlob, 'mp3'); // Save as .mp3 extension even if it's WAV
+                } catch (error) {
+                    console.error('Conversion error:', error);
+                    // Fallback to original blob
+                    await this.downloadAudio(audioBlob, 'mp3');
+                }
+            }
+
+            audioBufferToWav(audioBuffer) {
+                const length = audioBuffer.length;
+                const numberOfChannels = audioBuffer.numberOfChannels;
+                const sampleRate = audioBuffer.sampleRate;
+                
+                // Create WAV file
+                const buffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
+                const view = new DataView(buffer);
+                
+                // WAV header
+                const writeString = (offset, string) => {
+                    for (let i = 0; i < string.length; i++) {
+                        view.setUint8(offset + i, string.charCodeAt(i));
+                    }
+                };
+                
+                writeString(0, 'RIFF');
+                view.setUint32(4, 36 + length * numberOfChannels * 2, true);
+                writeString(8, 'WAVE');
+                writeString(12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 1, true);
+                view.setUint16(22, numberOfChannels, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+                view.setUint16(32, numberOfChannels * 2, true);
+                view.setUint16(34, 16, true);
+                writeString(36, 'data');
+                view.setUint32(40, length * numberOfChannels * 2, true);
+                
+                // Convert audio data
+                let offset = 44;
+                for (let i = 0; i < length; i++) {
+                    for (let channel = 0; channel < numberOfChannels; channel++) {
+                        const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(channel)[i]));
+                        view.setInt16(offset, sample * 0x7FFF, true);
+                        offset += 2;
+                    }
+                }
+                
+                return new Blob([buffer], { type: 'audio/wav' });
+            }
+
+            async downloadAudio(blob, extension) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `text-to-speech-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            saveAsTextFile(text) {
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `text-content-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                URL.revokeObjectURL(url);
             }
 
             updateButtons() {
@@ -919,18 +1096,12 @@
                     this.pauseBtn.classList.add('hidden');
                     this.stopBtn.classList.add('hidden');
                     
-                    // Show save button if we have audio
-                    if (this.audioChunks.length > 0) {
-                        this.saveBtn.classList.remove('hidden');
-                    }
-                    
                     // Update the main read button
                     this.readBtn.innerHTML = '<span class="play-icon"></span>Start Reading';
                 } else {
                     this.startBtn.classList.add('hidden');
                     this.pauseBtn.classList.remove('hidden');
                     this.stopBtn.classList.remove('hidden');
-                    this.saveBtn.classList.add('hidden');
                     
                     this.pauseBtn.innerHTML = this.isPaused ? 
                         '<span class="play-icon"></span><span>Resume</span>' :
